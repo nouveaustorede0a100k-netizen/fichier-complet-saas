@@ -26,13 +26,12 @@ export default function HomePage() {
           {/* Hero Text */}
           <div className="space-y-4">
             <h1 className="text-5xl font-bold text-foreground text-balance">
-              Transform Your Skills Into
+              Créez des Business Digitaux
               <br />
-              <span className="text-primary">Profitable Digital Products</span>
+              <span className="text-primary">Rentables avec l'IA</span>
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto text-pretty">
-              IdeaToLaunch helps you discover winning niches, create compelling offers, and launch your digital product
-              with AI-powered insights.
+              Drop Eazy vous aide à identifier les opportunités de marché, créer des offres digitales rentables et lancer votre produit rapidement grâce à l'intelligence artificielle.
             </p>
           </div>
 
@@ -55,10 +54,10 @@ export default function HomePage() {
             className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-16"
           >
             {[
-              { icon: TrendingUp, title: "Trend Analysis", desc: "Discover hot niches" },
-              { icon: Search, title: "Product Research", desc: "Find winning products" },
-              { icon: Package, title: "Offer Creation", desc: "Build compelling offers" },
-              { icon: Megaphone, title: "Ad Generation", desc: "Create winning ads" },
+              { icon: TrendingUp, title: "Trend Finder", desc: "Découvrez les niches tendances" },
+              { icon: Search, title: "Product Finder", desc: "Trouvez des produits gagnants" },
+              { icon: Package, title: "Offer Builder", desc: "Créez des offres percutantes" },
+              { icon: Megaphone, title: "Ad Generator", desc: "Générez des pubs performantes" },
             ].map((feature, index) => (
               <div
                 key={index}
