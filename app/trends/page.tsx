@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useAuth } from "@/contexts/AuthContext"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -62,6 +63,7 @@ const mockTrends: Trend[] = [
 ]
 
 export default function TrendsPage() {
+  const { user } = useAuth()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [trends, setTrends] = useState<Trend[]>([])
@@ -77,12 +79,23 @@ export default function TrendsPage() {
     setError("")
 
     try {
-      // Simulation d'une recherche IA
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // Pour l'instant, on utilise des données mockées
-      // Plus tard, on intégrera l'API OpenAI
-      setTrends(mockTrends)
+      const response = await fetch('/api/trends', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          query,
+          userId: user?.id 
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de l\'analyse')
+      }
+
+      const data = await response.json()
+      setTrends(data.trends || [])
     } catch (err) {
       setError("Erreur lors de l'analyse des tendances. Veuillez réessayer.")
       console.error(err)
