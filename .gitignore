@@ -81,4 +81,4 @@ Thumbs.db
 
 # API Keys and secrets
 secrets.json
-api-keys.json
+api-keys.json.env
