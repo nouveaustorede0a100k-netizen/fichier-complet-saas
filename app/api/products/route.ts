@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { findProducts, ProductAnalysis } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
+import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware'
+import { recordUsage } from '@/lib/quota'
 
 export async function POST(request: NextRequest) {
   try {
-    const { niche, userId } = await request.json()
+    const { niche } = await request.json()
 
     if (!niche) {
-      return NextResponse.json({ error: 'Niche is required' }, { status: 400 })
+      return createErrorResponse('Niche is required', 400)
     }
 
-    // Vérifier le plan utilisateur (placeholder pour l'instant)
-    const userPlan = 'free' // TODO: Récupérer le vrai plan utilisateur depuis Supabase
+    // Vérifier l'authentification et les quotas
+    const authResult = await withAuth(request, 'productAnalyses');
+    if (authResult instanceof NextResponse) {
+      return authResult;
+    }
+    const { user, quotaCheck } = authResult;
 
     // Trouver les produits avec OpenAI
     const products = await findProducts(niche)
@@ -32,42 +38,41 @@ export async function POST(request: NextRequest) {
       profit_margin: Math.floor(Math.random() * 30) + 20 // Score entre 20-50
     }))
 
-    // Sauvegarder l'analyse si un utilisateur est connecté
-    if (userId) {
-      try {
-        await supabase
-          .from('product_analyses')
-          .insert({
-            user_id: userId,
-            niche,
-            analysis_data: formattedProducts,
-            user_plan: userPlan
-          })
-      } catch (dbError) {
-        console.warn('Could not save to database:', dbError)
-        // Continue without failing
-      }
+    // Enregistrer l'utilisation
+    await recordUsage(user.id, 'productAnalyses', { niche }, formattedProducts);
+
+    // Sauvegarder l'analyse
+    try {
+      await supabase
+        .from('product_analyses')
+        .insert({
+          user_id: user.id,
+          niche,
+          analysis_data: formattedProducts
+        })
+    } catch (dbError) {
+      console.warn('Could not save to database:', dbError)
+      // Continue without failing
     }
 
-    return NextResponse.json({
+    return createApiResponse({
       success: true,
       data: formattedProducts,
+      quota: {
+        remaining: quotaCheck.remaining,
+        limit: quotaCheck.limit
+      },
       meta: {
         niche,
         count: formattedProducts.length,
-        generated_at: new Date().toISOString(),
-        user_plan: userPlan
+        generated_at: new Date().toISOString()
       }
     })
   } catch (error) {
     console.error('Error in products API:', error)
-    return NextResponse.json(
-      { 
-        success: false,
-        error: 'Erreur lors de l\'analyse des produits',
-        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
-      },
-      { status: 500 }
+    return createErrorResponse(
+      process.env.NODE_ENV === 'development' ? (error as Error).message : 'Erreur lors de l\'analyse des produits',
+      500
     )
   }
 }

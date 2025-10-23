@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateLaunchPlan, LaunchPlanAnalysis } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
+import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware'
+import { recordUsage } from '@/lib/quota'
 
 export async function POST(request: NextRequest) {
   try {
-    const { productName, launchDate, budget, userId } = await request.json()
+    const { productName, launchDate, budget } = await request.json()
 
     if (!productName) {
-      return NextResponse.json({ error: 'Product name is required' }, { status: 400 })
+      return createErrorResponse('Product name is required', 400)
     }
 
-    // Vérifier le plan utilisateur (placeholder pour l'instant)
-    const userPlan = 'free' // TODO: Récupérer le vrai plan utilisateur depuis Supabase
+    // Vérifier l'authentification et les quotas
+    const authResult = await withAuth(request, 'launchPlans');
+    if (authResult instanceof NextResponse) {
+      return authResult;
+    }
+    const { user, quotaCheck } = authResult;
 
     // Générer le plan de lancement avec OpenAI
     const plan = await generateLaunchPlan(productName, launchDate, budget)
@@ -69,49 +75,48 @@ export async function POST(request: NextRequest) {
       ]
     }
 
-    // Sauvegarder le plan si un utilisateur est connecté
-    if (userId) {
-      try {
-        const { data, error } = await supabase
-          .from('launches')
-          .insert({
-            user_id: userId,
-            title: formattedPlan.title,
-            launch_plan: formattedPlan,
-            launch_date: formattedPlan.launch_date,
-            user_plan: userPlan
-          })
-          .select()
-          .single()
+    // Enregistrer l'utilisation
+    await recordUsage(user.id, 'launchPlans', { productName, launchDate, budget }, formattedPlan);
 
-        if (error) throw error
+    // Sauvegarder le plan
+    try {
+      const { data, error } = await supabase
+        .from('launches')
+        .insert({
+          user_id: user.id,
+          title: formattedPlan.title,
+          launch_plan: formattedPlan,
+          launch_date: formattedPlan.launch_date
+        })
+        .select()
+        .single()
 
-        formattedPlan.id = data.id
-      } catch (dbError) {
-        console.warn('Could not save to database:', dbError)
-        // Continue without failing
-      }
+      if (error) throw error
+
+      formattedPlan.id = data.id
+    } catch (dbError) {
+      console.warn('Could not save to database:', dbError)
+      // Continue without failing
     }
 
-    return NextResponse.json({
+    return createApiResponse({
       success: true,
       data: formattedPlan,
+      quota: {
+        remaining: quotaCheck.remaining,
+        limit: quotaCheck.limit
+      },
       meta: {
         product_name: productName,
         launch_date: formattedPlan.launch_date,
-        generated_at: new Date().toISOString(),
-        user_plan: userPlan
+        generated_at: new Date().toISOString()
       }
     })
   } catch (error) {
     console.error('Error in launch API:', error)
-    return NextResponse.json(
-      { 
-        success: false,
-        error: 'Erreur lors de la génération du plan de lancement',
-        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
-      },
-      { status: 500 }
+    return createErrorResponse(
+      process.env.NODE_ENV === 'development' ? (error as Error).message : 'Erreur lors de la génération du plan de lancement',
+      500
     )
   }
 }

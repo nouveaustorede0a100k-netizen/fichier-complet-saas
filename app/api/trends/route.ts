@@ -6,10 +6,19 @@ import { fetchProductHuntTrends } from "@/lib/trends/fetchProductHunt";
 import { mergeAndRankTrends } from "@/lib/trends/mergeAndRankTrends";
 import { normalizeKeyword } from "@/lib/trends/normalizeKeyword";
 import { supabase } from '@/lib/supabase';
+import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware';
+import { recordUsage } from '@/lib/quota';
 
 export async function POST(req: Request) {
   try {
-    const { topic: rawKeyword = "digital business", country = "US", userId } = await req.json();
+    const { topic: rawKeyword = "digital business", country = "US" } = await req.json();
+
+    // Vérifier l'authentification et les quotas
+    const authResult = await withAuth(req, 'trendSearches');
+    if (authResult instanceof NextResponse) {
+      return authResult;
+    }
+    const { user, quotaCheck } = authResult;
 
     // 1️⃣ Correction + expansion du mot-clé
     const { keyword, variants } = await normalizeKeyword(rawKeyword);
@@ -50,34 +59,31 @@ export async function POST(req: Request) {
     const jsonEnd = content.lastIndexOf("]");
     const json = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
 
-    // 5️⃣ Vérifier le plan utilisateur (placeholder pour l'instant)
-    const userPlan = 'free' // TODO: Récupérer le vrai plan utilisateur depuis Supabase
+    // 5️⃣ Enregistrer l'utilisation
+    await recordUsage(user.id, 'trendSearches', { topic: rawKeyword, country }, json);
 
-    // 6️⃣ Sauvegarder la recherche si un utilisateur est connecté
-    if (userId) {
+    // 6️⃣ Sauvegarder la recherche
       try {
         await supabase
           .from('trend_searches')
           .insert({
-            user_id: userId,
-            query: keyword,
-            country: country || null,
-            results: json,
-            user_plan: userPlan,
-            raw_sources: {
-              googleCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'google').length, 0),
-              redditCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'reddit').length, 0),
-              phCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'producthunt').length, 0)
-            }
+          user_id: user.id,
+          query: keyword,
+          country: country || null,
+          results: json,
+          raw_sources: {
+            googleCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'google').length, 0),
+            redditCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'reddit').length, 0),
+            phCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'producthunt').length, 0)
+          }
           })
       } catch (dbError) {
         console.warn('Could not save to database:', dbError)
         // Continue without failing
       }
-    }
 
     // 7️⃣ Renvoi de la réponse enrichie
-    return NextResponse.json({
+    return createApiResponse({
       success: true,
       topic: keyword,
       totalAnalyzed: merged.length,
@@ -87,25 +93,24 @@ export async function POST(req: Request) {
         redditCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'reddit').length, 0),
         phCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'producthunt').length, 0)
       },
+      quota: {
+        remaining: quotaCheck.remaining,
+        limit: quotaCheck.limit
+      },
       meta: {
         original_keyword: rawKeyword,
         corrected_keyword: keyword,
         variants_searched: variants,
         country: country || 'Global',
-        generated_at: new Date().toISOString(),
-        user_plan: userPlan
+        generated_at: new Date().toISOString()
       }
     });
 
   } catch (err) {
     console.error("❌ Trend API error:", err);
-    return NextResponse.json(
-      { 
-        success: false,
-        error: "Erreur API de tendance",
-        details: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined
-      }, 
-      { status: 500 }
+    return createErrorResponse(
+      process.env.NODE_ENV === 'development' ? (err as Error).message : "Erreur API de tendance",
+      500
     );
   }
 }
