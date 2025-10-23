@@ -11,6 +11,7 @@
     "check:env": "node -r ts-node/register lib/configCheck.ts",
     "test:basic": "node tests/testEnv.js",
     "test:apis": "node tests/testAPIs.js",
+    "test:trends": "node tests/testTrendsRealData.js",
     "test:complete": "node tests/testComplete.js",
     "test:openai": "npx ts-node --project tsconfig.test.json tests/testOpenAIFunctions.ts",
     "test:e2e": "npx ts-node --project tsconfig.test.json tests/testAllFeatures.ts",
