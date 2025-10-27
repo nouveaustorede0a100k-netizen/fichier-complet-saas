@@ -1,92 +1,78 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateAds, AdAnalysis } from '@/lib/openai'
+import { generateAds } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
-import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware'
-import { recordUsage } from '@/lib/quota'
+import { trackAndGuardUsage } from '@/lib/usage'
 
 export async function POST(request: NextRequest) {
   try {
-    const { productName, targetAudience, platform } = await request.json()
+    const { product, audience, platform } = await request.json()
 
-    if (!productName || !targetAudience || !platform) {
-      return createErrorResponse('Product name, target audience and platform are required', 400)
+    if (!product || !audience || !platform) {
+      return NextResponse.json({ 
+        error: 'Product, audience et platform sont requis' 
+      }, { status: 400 })
     }
 
-    // Vérifier l'authentification et les quotas
-    const authResult = await withAuth(request, 'adCampaigns');
-    if (authResult instanceof NextResponse) {
-      return authResult;
+    // Récupérer l'utilisateur depuis les headers (middleware)
+    const userId = request.headers.get('x-user-id')
+    if (!userId) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
-    const { user, quotaCheck } = authResult;
 
-    // Générer les publicités avec OpenAI
-    const ads = await generateAds(productName, targetAudience, platform)
+    // Vérifier et tracker l'usage
+    const usageStats = await trackAndGuardUsage(userId, 'ads')
 
-    // Formater la réponse selon le format spécifié
+    // Générer les publicités
+    const ads = await generateAds(product, audience, platform)
+
+    // Formater la réponse
     const formattedAds = {
-      id: `ad_campaign_${Date.now()}`,
       platform: ads.platform,
       headlines: ads.headlines,
       descriptions: ads.descriptions,
       call_to_action: ads.call_to_action,
       target_audience: ads.target_audience,
       budget_suggestion: ads.budget_suggestion,
-      estimated_reach: Math.floor(Math.random() * 50000) + 10000, // Portée entre 10k-60k
-      estimated_clicks: Math.floor(Math.random() * 1000) + 100, // Clics entre 100-1100
-      estimated_conversions: Math.floor(Math.random() * 50) + 10, // Conversions entre 10-60
-      ctr: (Math.random() * 3 + 1).toFixed(2), // CTR entre 1-4%
-      cpc: `€${(Math.random() * 2 + 0.5).toFixed(2)}`, // CPC entre 0.5-2.5€
-      creative_suggestions: [
-        'Utiliser des couleurs vives',
-        'Mettre en avant les bénéfices',
-        'Ajouter des témoignages clients'
-      ]
+      generated_at: new Date().toISOString()
     }
 
-    // Enregistrer l'utilisation
-    await recordUsage(user.id, 'adCampaigns', { productName, targetAudience, platform }, formattedAds);
-
-    // Sauvegarder la campagne
+    // Sauvegarder dans la base de données
     try {
-      const { data, error } = await supabase
+      await supabase
         .from('ad_campaigns')
         .insert({
-          user_id: user.id,
-          product_name: productName,
-          platform: formattedAds.platform,
-          content: JSON.stringify(formattedAds),
-          target_audience: formattedAds.target_audience,
-          budget_suggestion: formattedAds.budget_suggestion
+          user_id: userId,
+          product,
+          audience,
+          platform,
+          campaign_data: formattedAds,
+          created_at: new Date().toISOString()
         })
-        .select()
-        .single()
-
-      if (error) throw error
-
-      formattedAds.id = data.id
     } catch (dbError) {
       console.warn('Could not save to database:', dbError)
-      // Continue without failing
     }
 
-    return createApiResponse({
+    return NextResponse.json({
       success: true,
-      data: formattedAds,
-      quota: {
-        remaining: quotaCheck.remaining,
-        limit: quotaCheck.limit
-      },
-      meta: {
-        product_name: productName,
-        platform,
-        generated_at: new Date().toISOString()
-      }
+      product,
+      audience,
+      platform,
+      ads: formattedAds,
+      usage: usageStats
     })
+
   } catch (error) {
-    console.error('Error in ads API:', error)
-    return createErrorResponse(
-      process.env.NODE_ENV === 'development' ? (error as Error).message : 'Erreur lors de la génération des publicités',
-      500
-    )
+    console.error('Ads API error:', error)
+    
+    if (error instanceof Error && error.message.includes('Limite mensuelle atteinte')) {
+      return NextResponse.json({ 
+        error: error.message,
+        code: 'QUOTA_EXCEEDED'
+      }, { status: 429 })
+    }
+
+    return NextResponse.json({ 
+      error: 'Erreur lors de la génération des publicités' 
+    }, { status: 500 })
   }
 }

@@ -1,143 +1,129 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware'
-import { QUOTA_LIMITS } from '@/lib/quota'
 
 export async function GET(request: NextRequest) {
   try {
-    // Vérifier l'authentification
-    const authResult = await withAuth(request, 'trendSearches');
-    if (authResult instanceof NextResponse) {
-      return authResult;
-    }
-    const { user } = authResult;
-
-    // Récupérer le plan de l'utilisateur
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('plan')
-      .eq('id', user.id)
-      .single()
-
-    if (userError) {
-      console.error('Error fetching user plan:', userError)
-      return createErrorResponse('Erreur lors de la récupération du plan utilisateur', 500)
+    // Récupérer l'utilisateur depuis les headers (middleware)
+    const userId = request.headers.get('x-user-id')
+    if (!userId) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
-    const plan = userData?.plan || 'free'
-    const today = new Date().toISOString().split('T')[0]
-
-    // Compter les utilisations du jour pour chaque module
-    const [trendSearches, productAnalyses, offers, adCampaigns, launchPlans] = await Promise.all([
+    // Récupérer les statistiques globales
+    const [
+      trendSearches,
+      productAnalyses,
+      adCampaigns,
+      keywordSearches
+    ] = await Promise.all([
+      // Nombre total de recherches de tendances
       supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'trendSearches')
-        .gte('created_at', `${today}T00:00:00.000Z`),
+        .from('trend_searches')
+        .select('id', { count: 'exact' })
+        .eq('user_id', userId),
       
+      // Nombre total d'analyses de produits
       supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'productAnalyses')
-        .gte('created_at', `${today}T00:00:00.000Z`),
+        .from('product_analyses')
+        .select('id', { count: 'exact' })
+        .eq('user_id', userId),
       
+      // Nombre total de campagnes publicitaires
       supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'offers')
-        .gte('created_at', `${today}T00:00:00.000Z`),
+        .from('ad_campaigns')
+        .select('id', { count: 'exact' })
+        .eq('user_id', userId),
       
+      // Nombre total de recherches de mots-clés
       supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'adCampaigns')
-        .gte('created_at', `${today}T00:00:00.000Z`),
+        .from('keyword_searches')
+        .select('id', { count: 'exact' })
+        .eq('user_id', userId),
       
+      // Activité récente (dernières 10 activités)
       supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'launchPlans')
-        .gte('created_at', `${today}T00:00:00.000Z`)
+        .from('trend_searches')
+        .select('id, query, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(5)
     ])
 
-    // Compter les utilisations totales
-    const [totalTrendSearches, totalProductAnalyses, totalOffers, totalAdCampaigns, totalLaunchPlans] = await Promise.all([
+    // Récupérer aussi l'activité des autres tables
+    const [recentProducts, recentAds, recentKeywords] = await Promise.all([
       supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'trendSearches'),
+        .from('product_analyses')
+        .select('id, query, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(3),
       
       supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'productAnalyses'),
+        .from('ad_campaigns')
+        .select('id, product, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(3),
       
       supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'offers'),
-      
-      supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'adCampaigns'),
-      
-      supabase
-        .from('results')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('module', 'launchPlans')
+        .from('keyword_searches')
+        .select('id, topic, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(3)
     ])
 
-    const limits = QUOTA_LIMITS[plan as keyof typeof QUOTA_LIMITS]
+    // Récupérer les activités récentes de tendances avec query
+    const { data: recentTrends } = await supabase
+      .from('trend_searches')
+      .select('id, query, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(5)
 
-    const stats = {
-      trendSearches: totalTrendSearches.count || 0,
-      productAnalyses: totalProductAnalyses.count || 0,
-      offers: totalOffers.count || 0,
-      adCampaigns: totalAdCampaigns.count || 0,
-      launchPlans: totalLaunchPlans.count || 0,
-      plan,
-      quota: {
-        trendSearches: {
-          used: trendSearches.count || 0,
-          limit: limits.trendSearches
-        },
-        productAnalyses: {
-          used: productAnalyses.count || 0,
-          limit: limits.productAnalyses
-        },
-        offers: {
-          used: offers.count || 0,
-          limit: limits.offers
-        },
-        adCampaigns: {
-          used: adCampaigns.count || 0,
-          limit: limits.adCampaigns
-        },
-        launchPlans: {
-          used: launchPlans.count || 0,
-          limit: limits.launchPlans
-        }
-      }
-    }
+    // Combiner toutes les activités récentes
+    const allRecentActivity = [
+      ...(recentTrends || []).map(item => ({
+        id: item.id,
+        type: 'trend_search',
+        title: `Recherche de tendances: ${item.query}`,
+        createdAt: item.created_at
+      })),
+      ...(recentProducts.data || []).map(item => ({
+        id: item.id,
+        type: 'product_analysis',
+        title: `Analyse de produit: ${item.query}`,
+        createdAt: item.created_at
+      })),
+      ...(recentAds.data || []).map(item => ({
+        id: item.id,
+        type: 'ad_campaign',
+        title: `Campagne publicitaire: ${item.product}`,
+        createdAt: item.created_at
+      })),
+      ...(recentKeywords.data || []).map(item => ({
+        id: item.id,
+        type: 'keyword_search',
+        title: `Recherche de mots-clés: ${item.topic}`,
+        createdAt: item.created_at
+      }))
+    ]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10)
 
-    return createApiResponse(stats)
+    return NextResponse.json({
+      success: true,
+      totalSearches: trendSearches.count || 0,
+      totalProducts: productAnalyses.count || 0,
+      totalAds: adCampaigns.count || 0,
+      totalKeywords: keywordSearches.count || 0,
+      recentActivity: allRecentActivity
+    })
 
   } catch (error) {
-    console.error('Error fetching dashboard stats:', error)
-    return createErrorResponse(
-      process.env.NODE_ENV === 'development' ? (error as Error).message : 'Erreur lors de la récupération des statistiques',
-      500
-    )
+    console.error('Stats API error:', error)
+    return NextResponse.json({ 
+      error: 'Erreur lors de la récupération des statistiques' 
+    }, { status: 500 })
   }
 }

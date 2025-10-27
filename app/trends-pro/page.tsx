@@ -16,7 +16,6 @@ import {
   TrendingUp, 
   AlertCircle,
   History,
-  Save,
   BarChart3
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -28,9 +27,8 @@ export default function TrendsProPage() {
   const [range, setRange] = useState("30d")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [currentTrend, setCurrentTrend] = useState(null)
+  const [currentTrend, setCurrentTrend] = useState<any>(null)
   const [history, setHistory] = useState([])
-  const [savedTrends, setSavedTrends] = useState([])
 
   // Charger l'historique au montage
   useEffect(() => {
@@ -93,28 +91,13 @@ export default function TrendsProPage() {
       localStorage.setItem('lastTrendAnalysis', JSON.stringify(data))
       
     } catch (err) {
-      setError(err.message)
+      setError(err instanceof Error ? err.message : 'Erreur lors de l\'analyse')
       console.error('Error analyzing trend:', err)
     } finally {
       setLoading(false)
     }
   }
 
-  // Sauvegarder une tendance
-  const saveTrend = async (trend) => {
-    if (!user) {
-      setError("Vous devez être connecté pour sauvegarder")
-      return
-    }
-
-    try {
-      // Ici vous pourriez ajouter une API pour sauvegarder les favoris
-      setSavedTrends(prev => [...prev, trend])
-      console.log('Trend saved:', trend.topic)
-    } catch (error) {
-      console.error('Error saving trend:', error)
-    }
-  }
 
   // Charger la dernière analyse depuis localStorage
   useEffect(() => {
@@ -241,26 +224,21 @@ export default function TrendsProPage() {
             >
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-foreground">
-                  Analyse de "{currentTrend.topic}"
+                  Analyse de "{currentTrend?.topic || 'Tendances'}"
                 </h2>
                 <div className="flex items-center gap-2">
-                  {currentTrend.cached && (
+                  {currentTrend?.cached && (
                     <Badge variant="outline">Cached</Badge>
                   )}
                   <Badge variant="secondary">
-                    {currentTrend.sourcesUsed?.length || 0} sources
+                    {currentTrend?.sourcesUsed?.length || 0} sources
                   </Badge>
                 </div>
               </div>
 
               {/* Trend Card */}
               <TrendCard 
-                trend={currentTrend} 
-                onSave={saveTrend}
-                onAnalyze={(newTopic) => {
-                  setTopic(newTopic)
-                  analyzeTrend()
-                }}
+                trend={currentTrend}
               />
 
               {/* Chart */}

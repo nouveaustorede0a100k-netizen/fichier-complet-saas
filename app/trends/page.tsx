@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,7 +45,7 @@ interface TrendsResponse {
 }
 
 export default function TrendsPage() {
-  const { user, loading } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [topic, setTopic] = useState('')
   const [country, setCountry] = useState('US')
   const [loading, setLoading] = useState(false)
@@ -92,7 +93,7 @@ export default function TrendsPage() {
     }
   }
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

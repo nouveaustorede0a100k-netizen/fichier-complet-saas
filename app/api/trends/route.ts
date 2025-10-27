@@ -1,15 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { openai } from "@/lib/openai";
 import { fetchGoogleTrends } from "@/lib/trends/fetchGoogleTrends";
 import { fetchRedditTrends } from "@/lib/trends/fetchReddit";
 import { fetchProductHuntTrends } from "@/lib/trends/fetchProductHunt";
+import { fetchYouTubeTrends } from "@/lib/trends/fetchYouTube";
 import { mergeAndRankTrends } from "@/lib/trends/mergeAndRankTrends";
 import { normalizeKeyword } from "@/lib/trends/normalizeKeyword";
 import { supabase } from '@/lib/supabase';
 import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware';
 import { recordUsage } from '@/lib/quota';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const { topic: rawKeyword = "digital business", country = "US" } = await req.json();
 
@@ -26,13 +27,14 @@ export async function POST(req: Request) {
 
     // 2️⃣ Récupération de tendances multi-sources pour toutes les variantes
     const results = await Promise.all(
-      variants.map(async (kw) => {
-        const [google, reddit, ph] = await Promise.all([
+      variants.map(async (kw: string) => {
+        const [google, reddit, ph, youtube] = await Promise.all([
           fetchGoogleTrends(kw, country),
           fetchRedditTrends(kw),
-          fetchProductHuntTrends(kw)
+          fetchProductHuntTrends(kw),
+          fetchYouTubeTrends(kw)
         ]);
-        return mergeAndRankTrends(google, reddit, ph);
+        return mergeAndRankTrends(google, reddit, ph, youtube);
       })
     );
 
@@ -54,7 +56,7 @@ export async function POST(req: Request) {
       ],
     });
 
-    const content = completion.choices[0].message.content || "";
+    const content = completion.choices[0]?.message?.content || "";
     const jsonStart = content.indexOf("[");
     const jsonEnd = content.lastIndexOf("]");
     const json = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
@@ -72,9 +74,10 @@ export async function POST(req: Request) {
           country: country || null,
           results: json,
           raw_sources: {
-            googleCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'google').length, 0),
-            redditCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'reddit').length, 0),
-            phCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'producthunt').length, 0)
+            googleCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'google').length, 0),
+            redditCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'reddit').length, 0),
+            phCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'producthunt').length, 0),
+            youtubeCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'youtube').length, 0)
           }
           })
       } catch (dbError) {
@@ -88,11 +91,12 @@ export async function POST(req: Request) {
       topic: keyword,
       totalAnalyzed: merged.length,
       rankedTrends: json,
-      rawSources: {
-        googleCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'google').length, 0),
-        redditCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'reddit').length, 0),
-        phCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'producthunt').length, 0)
-      },
+        rawSources: {
+          googleCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'google').length, 0),
+          redditCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'reddit').length, 0),
+          phCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'producthunt').length, 0),
+          youtubeCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'youtube').length, 0)
+        },
       quota: {
         remaining: quotaCheck.remaining,
         limit: quotaCheck.limit

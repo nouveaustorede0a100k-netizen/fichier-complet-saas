@@ -1,28 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { findProducts, ProductAnalysis } from '@/lib/openai'
+import { findProducts } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
-import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware'
-import { recordUsage } from '@/lib/quota'
+import { trackAndGuardUsage } from '@/lib/usage'
 
 export async function POST(request: NextRequest) {
   try {
-    const { niche } = await request.json()
+    const { query } = await request.json()
 
-    if (!niche) {
-      return createErrorResponse('Niche is required', 400)
+    if (!query) {
+      return NextResponse.json({ error: 'Query requise' }, { status: 400 })
     }
 
-    // Vérifier l'authentification et les quotas
-    const authResult = await withAuth(request, 'productAnalyses');
-    if (authResult instanceof NextResponse) {
-      return authResult;
+    // Récupérer l'utilisateur depuis les headers (middleware)
+    const userId = request.headers.get('x-user-id')
+    if (!userId) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
-    const { user, quotaCheck } = authResult;
 
-    // Trouver les produits avec OpenAI
-    const products = await findProducts(niche)
+    // Vérifier et tracker l'usage
+    const usageStats = await trackAndGuardUsage(userId, 'products')
 
-    // Formater la réponse selon le format spécifié
+    // Générer l'analyse des produits
+    const products = await findProducts(query)
+
+    // Formater la réponse
     const formattedProducts = products.map((product, index) => ({
       id: `product_${index + 1}`,
       name: product.title,
@@ -33,46 +34,48 @@ export async function POST(request: NextRequest) {
       key_features: product.key_features,
       target_audience: product.target_audience,
       success_factors: product.success_factors,
-      market_potential: Math.floor(Math.random() * 40) + 60, // Score entre 60-100
-      competition_level: Math.floor(Math.random() * 30) + 30, // Score entre 30-60
-      profit_margin: Math.floor(Math.random() * 30) + 20 // Score entre 20-50
+      market_potential: Math.floor(Math.random() * 40) + 60,
+      competition_level: Math.floor(Math.random() * 30) + 30,
+      profit_margin: Math.floor(Math.random() * 30) + 20
     }))
 
-    // Enregistrer l'utilisation
-    await recordUsage(user.id, 'productAnalyses', { niche }, formattedProducts);
-
-    // Sauvegarder l'analyse
+    // Sauvegarder dans la base de données
     try {
       await supabase
         .from('product_analyses')
         .insert({
-          user_id: user.id,
-          niche,
-          analysis_data: formattedProducts
+          user_id: userId,
+          query,
+          analysis_data: formattedProducts,
+          created_at: new Date().toISOString()
         })
     } catch (dbError) {
       console.warn('Could not save to database:', dbError)
-      // Continue without failing
     }
 
-    return createApiResponse({
+    return NextResponse.json({
       success: true,
-      data: formattedProducts,
-      quota: {
-        remaining: quotaCheck.remaining,
-        limit: quotaCheck.limit
-      },
+      query,
+      products: formattedProducts,
+      usage: usageStats,
       meta: {
-        niche,
         count: formattedProducts.length,
         generated_at: new Date().toISOString()
       }
     })
+
   } catch (error) {
-    console.error('Error in products API:', error)
-    return createErrorResponse(
-      process.env.NODE_ENV === 'development' ? (error as Error).message : 'Erreur lors de l\'analyse des produits',
-      500
-    )
+    console.error('Products API error:', error)
+    
+    if (error instanceof Error && error.message.includes('Limite mensuelle atteinte')) {
+      return NextResponse.json({ 
+        error: error.message,
+        code: 'QUOTA_EXCEEDED'
+      }, { status: 429 })
+    }
+
+    return NextResponse.json({ 
+      error: 'Erreur lors de l\'analyse des produits' 
+    }, { status: 500 })
   }
 }

@@ -11,7 +11,6 @@ import {
   Search, 
   ArrowRight, 
   Loader2, 
-  Star, 
   TrendingUp, 
   DollarSign,
   Target,

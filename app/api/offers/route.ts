@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateOffer, OfferAnalysis } from '@/lib/openai'
+import { generateOffer } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
 import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware'
 import { recordUsage } from '@/lib/quota'

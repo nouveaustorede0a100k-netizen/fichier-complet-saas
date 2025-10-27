@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,32 +9,34 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, Mail, Lock, ArrowRight, Sparkles } from 'lucide-react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { Loader2, Mail, User, Lock } from 'lucide-react'
 
-export default function AuthPage() {
+function AuthPageContent() {
+  const { signIn, signUp, signInWithMagicLink, loading: authLoading } = useAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectedFrom = searchParams.get('redirectedFrom')
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const { signIn, signUp, signInWithMagicLink } = useAuth()
-  const router = useRouter()
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setSuccess('')
 
     const { error } = await signIn(email, password)
+    
     if (error) {
       setError(error.message)
     } else {
-      setSuccess('Connexion réussie !')
-      setTimeout(() => router.push('/dashboard'), 1000)
+      router.push(redirectedFrom || '/dashboard')
     }
+    
     setLoading(false)
   }
 
@@ -41,52 +44,58 @@ export default function AuthPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setSuccess('')
 
-    const { error } = await signUp(email, password)
+    const { error } = await signUp(email, password, fullName)
+    
     if (error) {
       setError(error.message)
     } else {
-      setSuccess('Compte créé ! Vérifiez votre email pour confirmer.')
+      setSuccess('Compte créé ! Vérifiez votre email pour confirmer votre inscription.')
     }
+    
     setLoading(false)
   }
 
   const handleMagicLink = async () => {
     setLoading(true)
     setError('')
-    setSuccess('')
 
     const { error } = await signInWithMagicLink(email)
+    
     if (error) {
       setError(error.message)
     } else {
-      setSuccess('Lien magique envoyé ! Vérifiez votre email.')
+      setSuccess('Lien de connexion envoyé ! Vérifiez votre email.')
     }
+    
     setLoading(false)
   }
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo et titre */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-3 rounded-xl">
-              <Sparkles className="w-8 h-8 text-white" />
-            </div>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900">Drop Eazy</h1>
-          <p className="text-gray-600 mt-2">
-            Votre assistant IA pour réussir en ligne
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Drop Eazy
+          </h1>
+          <p className="mt-2 text-gray-600">
+            Votre assistant IA pour le marketing digital
           </p>
         </div>
 
-        <Card className="shadow-xl">
-          <CardHeader className="text-center">
-            <CardTitle>Bienvenue !</CardTitle>
+        <Card>
+          <CardHeader>
+            <CardTitle>Connexion</CardTitle>
             <CardDescription>
-              Connectez-vous ou créez un compte pour commencer
+              Connectez-vous à votre compte ou créez-en un nouveau
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -96,7 +105,7 @@ export default function AuthPage() {
                 <TabsTrigger value="signup">Inscription</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="signin" className="space-y-4 mt-6">
+              <TabsContent value="signin" className="space-y-4">
                 <form onSubmit={handleSignIn} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="signin-email">Email</Label>
@@ -105,14 +114,15 @@ export default function AuthPage() {
                       <Input
                         id="signin-email"
                         type="email"
+                        placeholder="votre@email.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="votre@email.com"
                         className="pl-10"
                         required
                       />
                     </div>
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="signin-password">Mot de passe</Label>
                     <div className="relative">
@@ -120,14 +130,15 @@ export default function AuthPage() {
                       <Input
                         id="signin-password"
                         type="password"
+                        placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
                         className="pl-10"
                         required
                       />
                     </div>
                   </div>
+
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? (
                       <>
@@ -135,10 +146,7 @@ export default function AuthPage() {
                         Connexion...
                       </>
                     ) : (
-                      <>
-                        Se connecter
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </>
+                      'Se connecter'
                     )}
                   </Button>
                 </form>
@@ -148,7 +156,7 @@ export default function AuthPage() {
                     <span className="w-full border-t" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-2 text-muted-foreground">Ou</span>
+                    <span className="bg-white px-2 text-gray-500">Ou</span>
                   </div>
                 </div>
 
@@ -159,12 +167,27 @@ export default function AuthPage() {
                   disabled={loading || !email}
                 >
                   <Mail className="w-4 h-4 mr-2" />
-                  Lien magique par email
+                  Connexion par email
                 </Button>
               </TabsContent>
 
-              <TabsContent value="signup" className="space-y-4 mt-6">
+              <TabsContent value="signup" className="space-y-4">
                 <form onSubmit={handleSignUp} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-name">Nom complet</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="signup-name"
+                        type="text"
+                        placeholder="Jean Dupont"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
                     <div className="relative">
@@ -172,14 +195,15 @@ export default function AuthPage() {
                       <Input
                         id="signup-email"
                         type="email"
+                        placeholder="votre@email.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="votre@email.com"
                         className="pl-10"
                         required
                       />
                     </div>
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">Mot de passe</Label>
                     <div className="relative">
@@ -187,14 +211,16 @@ export default function AuthPage() {
                       <Input
                         id="signup-password"
                         type="password"
+                        placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
                         className="pl-10"
                         required
+                        minLength={6}
                       />
                     </div>
                   </div>
+
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? (
                       <>
@@ -210,44 +236,41 @@ export default function AuthPage() {
             </Tabs>
 
             {error && (
-              <Alert className="mt-4">
+              <Alert className="mt-4" variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
             {success && (
-              <Alert className="mt-4 border-green-200 bg-green-50">
-                <AlertDescription className="text-green-800">{success}</AlertDescription>
+              <Alert className="mt-4" variant="default">
+                <AlertDescription className="text-green-600">{success}</AlertDescription>
               </Alert>
             )}
-
-            <div className="mt-6 text-center">
-              <p className="text-sm text-gray-600">
-                En continuant, vous acceptez nos{' '}
-                <Link href="/terms" className="text-blue-600 hover:underline">
-                  conditions d'utilisation
-                </Link>{' '}
-                et notre{' '}
-                <Link href="/privacy" className="text-blue-600 hover:underline">
-                  politique de confidentialité
-                </Link>
-              </p>
-            </div>
           </CardContent>
         </Card>
 
-        {/* Features preview */}
-        <div className="mt-8 text-center">
-          <p className="text-sm text-gray-600 mb-4">Débloquez la puissance de l'IA pour :</p>
-          <div className="flex flex-wrap justify-center gap-4 text-xs text-gray-500">
-            <span className="bg-white px-3 py-1 rounded-full">🔍 Recherche de tendances</span>
-            <span className="bg-white px-3 py-1 rounded-full">📦 Analyse de produits</span>
-            <span className="bg-white px-3 py-1 rounded-full">🎁 Génération d'offres</span>
-            <span className="bg-white px-3 py-1 rounded-full">📢 Création de pubs</span>
-            <span className="bg-white px-3 py-1 rounded-full">🚀 Plans de lancement</span>
-          </div>
+        <div className="text-center text-sm text-gray-600">
+          En continuant, vous acceptez nos{' '}
+          <a href="#" className="text-blue-600 hover:underline">
+            conditions d'utilisation
+          </a>{' '}
+          et notre{' '}
+          <a href="#" className="text-blue-600 hover:underline">
+            politique de confidentialité
+          </a>
+          .
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+    </div>}>
+      <AuthPageContent />
+    </Suspense>
   )
 }

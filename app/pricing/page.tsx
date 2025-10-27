@@ -5,138 +5,52 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Check, X, Crown, Zap, Star } from 'lucide-react'
-import Link from 'next/link'
-
-const plans = [
-  {
-    name: 'Gratuit',
-    price: 0,
-    period: 'toujours',
-    description: 'Parfait pour commencer',
-    features: [
-      '3 recherches de tendances par mois',
-      '1 analyse de produit par mois',
-      '1 offre générée par mois',
-      '0 campagne publicitaire',
-      '1 plan de lancement par mois',
-      'Support par email'
-    ],
-    limitations: [
-      'Pas de campagnes publicitaires',
-      'Quotas limités',
-      'Pas d\'export de données'
-    ],
-    buttonText: 'Commencer gratuitement',
-    buttonVariant: 'outline' as const,
-    popular: false,
-    color: 'border-gray-200'
-  },
-  {
-    name: 'Pro',
-    price: 29,
-    period: 'mois',
-    description: 'Pour les entrepreneurs sérieux',
-    features: [
-      'Recherches de tendances illimitées',
-      'Analyses de produits illimitées',
-      'Offres illimitées',
-      '10 campagnes publicitaires par mois',
-      'Plans de lancement illimités',
-      'Support prioritaire',
-      'Export des données',
-      'API access'
-    ],
-    limitations: [],
-    buttonText: 'Passer au Pro',
-    buttonVariant: 'default' as const,
-    popular: true,
-    color: 'border-blue-500',
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID
-  },
-  {
-    name: 'Premium',
-    price: 79,
-    period: 'mois',
-    description: 'Pour les agences et équipes',
-    features: [
-      'Tout du plan Pro',
-      'Campagnes publicitaires illimitées',
-      'Assistant de lancement avancé',
-      'Intégrations API complètes',
-      'Support téléphonique',
-      'Formation personnalisée',
-      'Comptes d\'équipe',
-      'Analytics avancés'
-    ],
-    limitations: [],
-    buttonText: 'Passer au Premium',
-    buttonVariant: 'default' as const,
-    popular: false,
-    color: 'border-purple-500',
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_PREMIUM_PRICE_ID
-  }
-]
+import { Check, Crown, Zap, Star } from 'lucide-react'
+import { SUBSCRIPTION_PLANS } from '@/lib/stripe'
 
 export default function PricingPage() {
-  const { user, loading } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [processing, setProcessing] = useState<string | null>(null)
 
-  const handleUpgrade = async (planName: string, priceId?: string) => {
-    if (!user) {
-      // Rediriger vers la page de connexion
-      window.location.href = '/auth'
+  const checkout = async (priceId: string) => {
+    if (!user?.email) {
+      alert('Veuillez vous connecter pour continuer')
       return
     }
 
-    if (planName === 'Gratuit') {
-      // Le plan gratuit est déjà actif
-      return
-    }
-
-    if (!priceId) {
-      console.error('Price ID not found for plan:', planName)
-      return
-    }
-
-    setProcessing(planName)
-
+    setProcessing(priceId)
+    
     try {
-      const response = await fetch('/api/stripe/create-checkout-session', {
+      const res = await fetch('/api/stripe/checkout', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify({
-          priceId,
-          userId: user.id
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          priceId, 
+          email: user.email 
+        }),
       })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors de la création de la session de paiement')
+      
+      const { url, error } = await res.json()
+      
+      if (error) {
+        throw new Error(error)
       }
-
-      // Rediriger vers Stripe Checkout
-      window.location.href = data.url
+      
+      if (url) {
+        window.location.href = url
+      }
     } catch (error) {
-      console.error('Error upgrading plan:', error)
-      alert('Erreur lors de la mise à niveau. Veuillez réessayer.')
+      console.error('Checkout error:', error)
+      alert('Erreur lors de la création de la session de paiement')
     } finally {
       setProcessing(null)
     }
   }
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Chargement...</p>
-        </div>
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
       </div>
     )
   }
@@ -147,90 +61,110 @@ export default function PricingPage() {
         {/* Header */}
         <div className="text-center mb-16">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Choisissez votre plan Drop Eazy
+            Choisissez votre plan
           </h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Débloquez tout le potentiel de votre business digital avec nos outils IA puissants
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            Commencez gratuitement et passez au niveau supérieur quand vous êtes prêt
           </p>
         </div>
 
         {/* Plans */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-          {plans.map((plan) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          {Object.entries(SUBSCRIPTION_PLANS).map(([key, plan]) => (
             <Card 
-              key={plan.name} 
-              className={`relative ${plan.popular ? 'ring-2 ring-blue-500 shadow-xl scale-105' : ''} ${plan.color}`}
+              key={key} 
+              className={`relative ${
+                key === 'pro' 
+                  ? 'ring-2 ring-blue-500 shadow-lg scale-105' 
+                  : 'hover:shadow-lg transition-shadow'
+              }`}
             >
-              {plan.popular && (
+              {key === 'pro' && (
                 <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                  <Badge className="bg-blue-600 text-white px-4 py-1">
+                  <Badge className="bg-blue-500 text-white px-4 py-1">
                     <Star className="w-4 h-4 mr-1" />
-                    Le plus populaire
+                    Populaire
                   </Badge>
                 </div>
               )}
-              
+
               <CardHeader className="text-center pb-8">
+                <div className="flex justify-center mb-4">
+                  {key === 'free' && <Crown className="w-8 h-8 text-gray-400" />}
+                  {key === 'pro' && <Zap className="w-8 h-8 text-blue-500" />}
+                  {key === 'business' && <Star className="w-8 h-8 text-purple-500" />}
+                </div>
                 <CardTitle className="text-2xl font-bold">{plan.name}</CardTitle>
-                <CardDescription className="text-gray-600 mb-4">
-                  {plan.description}
+                <CardDescription className="text-gray-600">
+                  {key === 'free' && 'Parfait pour commencer'}
+                  {key === 'pro' && 'Pour les professionnels'}
+                  {key === 'business' && 'Pour les entreprises'}
                 </CardDescription>
-                <div className="flex items-baseline justify-center">
-                  <span className="text-5xl font-bold text-gray-900">€{plan.price}</span>
-                  <span className="text-gray-600 ml-1">/{plan.period}</span>
+                <div className="mt-4">
+                  <span className="text-4xl font-bold text-gray-900">
+                    {plan.price === 0 ? 'Gratuit' : `€${plan.price}`}
+                  </span>
+                  {plan.price > 0 && (
+                    <span className="text-gray-600">/mois</span>
+                  )}
                 </div>
               </CardHeader>
 
               <CardContent className="space-y-6">
-                <ul className="space-y-4">
+                <ul className="space-y-3">
                   {plan.features.map((feature, index) => (
                     <li key={index} className="flex items-start">
                       <Check className="w-5 h-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
                       <span className="text-gray-700">{feature}</span>
                     </li>
                   ))}
-                  {plan.limitations.map((limitation, index) => (
-                    <li key={index} className="flex items-start">
-                      <X className="w-5 h-5 text-red-500 mr-3 mt-0.5 flex-shrink-0" />
-                      <span className="text-gray-500 line-through">{limitation}</span>
-                    </li>
-                  ))}
                 </ul>
 
-                <Button
-                  className="w-full"
-                  variant={plan.buttonVariant}
-                  size="lg"
-                  onClick={() => handleUpgrade(plan.name, plan.stripePriceId)}
-                  disabled={processing === plan.name}
-                >
-                  {processing === plan.name ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Traitement...
-                    </>
+                <div className="pt-4">
+                  {key === 'free' ? (
+                    <Button 
+                      className="w-full" 
+                      variant="outline"
+                      disabled
+                    >
+                      Plan actuel
+                    </Button>
                   ) : (
-                    <>
-                      {plan.name === 'Pro' && <Crown className="w-4 h-4 mr-2" />}
-                      {plan.name === 'Premium' && <Zap className="w-4 h-4 mr-2" />}
-                      {plan.buttonText}
-                    </>
+                    <Button 
+                      className="w-full"
+                      onClick={() => plan.priceId && checkout(plan.priceId)}
+                      disabled={!plan.priceId || processing === plan.priceId}
+                    >
+                      {processing === plan.priceId ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Traitement...
+                        </>
+                      ) : (
+                        `Choisir ${plan.name}`
+                      )}
+                    </Button>
                   )}
-                </Button>
+                </div>
+
+                {key !== 'free' && (
+                  <p className="text-xs text-gray-500 text-center">
+                    Facturation mensuelle • Annulation à tout moment
+                  </p>
+                )}
               </CardContent>
             </Card>
           ))}
         </div>
 
         {/* FAQ */}
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
+        <div className="mt-20 max-w-3xl mx-auto">
+          <h2 className="text-2xl font-bold text-center text-gray-900 mb-8">
             Questions fréquentes
           </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <h3 className="font-semibold text-gray-900 mb-2">
                 Puis-je changer de plan à tout moment ?
               </h3>
               <p className="text-gray-600">
@@ -238,57 +172,24 @@ export default function PricingPage() {
                 Les changements prennent effet immédiatement.
               </p>
             </div>
-            
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Que se passe-t-il si je dépasse mes quotas ?
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <h3 className="font-semibold text-gray-900 mb-2">
+                Que se passe-t-il si je dépasse ma limite ?
               </h3>
               <p className="text-gray-600">
-                Vous recevrez une notification et pourrez upgrader votre plan 
-                pour continuer à utiliser les fonctionnalités.
+                Vous recevrez une notification quand vous approchez de votre limite. 
+                Vous pourrez upgrader votre plan pour continuer à utiliser le service.
               </p>
             </div>
-            
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <h3 className="font-semibold text-gray-900 mb-2">
                 Puis-je annuler mon abonnement ?
               </h3>
               <p className="text-gray-600">
-                Oui, vous pouvez annuler votre abonnement à tout moment depuis 
-                votre dashboard. Aucun frais d'annulation.
+                Oui, vous pouvez annuler votre abonnement à tout moment depuis votre dashboard. 
+                Vous conserverez l'accès jusqu'à la fin de votre période de facturation.
               </p>
             </div>
-            
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Mes données sont-elles sécurisées ?
-              </h3>
-              <p className="text-gray-600">
-                Absolument. Nous utilisons un chiffrement de niveau bancaire 
-                et ne partageons jamais vos données avec des tiers.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* CTA Final */}
-        <div className="text-center mt-16">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            Prêt à transformer votre business ?
-          </h2>
-          <p className="text-gray-600 mb-8">
-            Rejoignez des milliers d'entrepreneurs qui utilisent Drop Eazy pour réussir
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/dashboard">
-              <Button size="lg" variant="outline">
-                Essayer gratuitement
-              </Button>
-            </Link>
-            <Button size="lg" className="bg-gradient-to-r from-purple-600 to-blue-600">
-              <Crown className="w-5 h-5 mr-2" />
-              Commencer avec Pro
-            </Button>
           </div>
         </div>
       </div>

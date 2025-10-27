@@ -11,14 +11,10 @@ import {
   Rocket, 
   ArrowRight, 
   Loader2, 
-  Copy, 
-  Check,
   Calendar,
   Target,
-  Users,
   DollarSign,
   CheckCircle,
-  Clock,
   Star
 } from "lucide-react"
 import { motion } from "framer-motion"
@@ -57,7 +53,6 @@ export default function LaunchPage() {
   const [loading, setLoading] = useState(false)
   const [plan, setPlan] = useState<LaunchPlan | null>(null)
   const [error, setError] = useState("")
-  const [copied, setCopied] = useState("")
 
   const handleGenerate = async () => {
     if (!productName.trim()) {
@@ -96,15 +91,6 @@ export default function LaunchPage() {
     }
   }
 
-  const copyToClipboard = async (text: string, type: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(type)
-      setTimeout(() => setCopied(""), 2000)
-    } catch (err) {
-      console.error("Failed to copy:", err)
-    }
-  }
 
   const getPriorityColor = (priority: string) => {
     switch (priority.toLowerCase()) {

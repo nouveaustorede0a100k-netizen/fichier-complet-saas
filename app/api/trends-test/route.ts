@@ -3,6 +3,7 @@ import { openai } from "@/lib/openai";
 import { fetchGoogleTrends } from "@/lib/trends/fetchGoogleTrends";
 import { fetchRedditTrends } from "@/lib/trends/fetchReddit";
 import { fetchProductHuntTrends } from "@/lib/trends/fetchProductHunt";
+import { fetchYouTubeTrends } from "@/lib/trends/fetchYouTube";
 import { mergeAndRankTrends } from "@/lib/trends/mergeAndRankTrends";
 import { normalizeKeyword } from "@/lib/trends/normalizeKeyword";
 
@@ -18,15 +19,16 @@ export async function POST(req: Request) {
 
     // 2️⃣ Récupération de tendances multi-sources pour toutes les variantes
     const results = await Promise.all(
-      variants.map(async (kw) => {
+      variants.map(async (kw: string) => {
         console.log("🔍 Recherche pour:", kw);
-        const [google, reddit, ph] = await Promise.all([
+        const [google, reddit, ph, youtube] = await Promise.all([
           fetchGoogleTrends(kw, country),
           fetchRedditTrends(kw),
-          fetchProductHuntTrends(kw)
+          fetchProductHuntTrends(kw),
+          fetchYouTubeTrends(kw)
         ]);
-        console.log(`📊 Résultats pour "${kw}": Google=${google.length}, Reddit=${reddit.length}, PH=${ph.length}`);
-        return mergeAndRankTrends(google, reddit, ph);
+        console.log(`📊 Résultats pour "${kw}": Google=${google.length}, Reddit=${reddit.length}, PH=${ph.length}, YouTube=${youtube.length}`);
+        return mergeAndRankTrends(google, reddit, ph, youtube);
       })
     );
 
@@ -54,7 +56,7 @@ export async function POST(req: Request) {
           ],
         });
 
-        const content = completion.choices[0].message.content || "";
+        const content = completion.choices[0]?.message?.content || "";
         const jsonStart = content.indexOf("[");
         const jsonEnd = content.lastIndexOf("]");
         if (jsonStart !== -1 && jsonEnd !== -1) {
@@ -63,7 +65,7 @@ export async function POST(req: Request) {
       } catch (aiError) {
         console.error("❌ Erreur OpenAI:", aiError);
         // Fallback avec les données brutes
-        json = merged.slice(0, 10).map((item, index) => ({
+        json = merged.slice(0, 10).map((item) => ({
           name: item.name,
           scoreGrowth: Math.floor(Math.random() * 50) + 50,
           scorePotential: Math.floor(Math.random() * 50) + 50,
@@ -98,9 +100,10 @@ export async function POST(req: Request) {
       totalAnalyzed: merged.length,
       rankedTrends: json,
       rawSources: {
-        googleCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'google').length, 0),
-        redditCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'reddit').length, 0),
-        phCount: results.reduce((acc, r) => acc + r.filter(item => item.type === 'producthunt').length, 0)
+        googleCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'google').length, 0),
+        redditCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'reddit').length, 0),
+        phCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'producthunt').length, 0),
+        youtubeCount: results.reduce((acc, r) => acc + r.filter((item: any) => item.type === 'youtube').length, 0)
       },
       meta: {
         original_keyword: rawKeyword,
