@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { findProducts } from '@/lib/openai'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { trackAndGuardUsage } from '@/lib/usage'
 
 export async function POST(request: NextRequest) {
@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
 
     // Sauvegarder dans la base de données
     try {
+      const supabase = getSupabaseAdmin()
       await supabase
         .from('product_analyses')
         .insert({

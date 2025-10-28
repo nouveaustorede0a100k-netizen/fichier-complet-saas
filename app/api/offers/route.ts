@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateOffer } from '@/lib/openai'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware'
 import { recordUsage } from '@/lib/quota'
 
@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
 
     // Sauvegarder l'offre
     try {
+      const supabase = getSupabaseAdmin()
       const { data, error } = await supabase
         .from('offers')
         .insert({

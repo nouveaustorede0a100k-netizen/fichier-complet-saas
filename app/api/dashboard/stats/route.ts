@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,6 +8,8 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
+
+    const supabase = getSupabaseAdmin()
 
     // Récupérer les statistiques globales
     const [
