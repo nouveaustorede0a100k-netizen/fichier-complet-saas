@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email TEXT UNIQUE NOT NULL,
   full_name TEXT,
   avatar_url TEXT,
+  stripe_customer_id TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -98,19 +99,37 @@ CREATE TABLE IF NOT EXISTS public.trend_searches (
 CREATE TABLE IF NOT EXISTS public.offers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  idea TEXT NOT NULL,
-  offer_data JSONB NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  price TEXT,
+  features JSONB,
+  sales_page TEXT,
+  email_copy TEXT,
+  offer_data JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- ===========================================
--- TABLE LAUNCH_PLANS (plans de lancement)
+-- TABLE LAUNCHES (plans de lancement)
 -- ===========================================
-CREATE TABLE IF NOT EXISTS public.launch_plans (
+CREATE TABLE IF NOT EXISTS public.launches (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  product TEXT NOT NULL,
-  plan_data JSONB NOT NULL,
+  title TEXT NOT NULL,
+  launch_plan JSONB NOT NULL,
+  launch_date TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ===========================================
+-- TABLE USAGE_LOGS (historique d'utilisation)
+-- ===========================================
+CREATE TABLE IF NOT EXISTS public.usage_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  feature TEXT NOT NULL,
+  request JSONB,
+  response JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -125,7 +144,8 @@ CREATE INDEX IF NOT EXISTS idx_ad_campaigns_user_id ON public.ad_campaigns(user_
 CREATE INDEX IF NOT EXISTS idx_keyword_searches_user_id ON public.keyword_searches(user_id);
 CREATE INDEX IF NOT EXISTS idx_trend_searches_user_id ON public.trend_searches(user_id);
 CREATE INDEX IF NOT EXISTS idx_offers_user_id ON public.offers(user_id);
-CREATE INDEX IF NOT EXISTS idx_launch_plans_user_id ON public.launch_plans(user_id);
+CREATE INDEX IF NOT EXISTS idx_launches_user_id ON public.launches(user_id);
+CREATE INDEX IF NOT EXISTS idx_usage_logs_user_id ON public.usage_logs(user_id);
 
 -- ===========================================
 -- ROW LEVEL SECURITY (RLS)
@@ -140,7 +160,8 @@ ALTER TABLE public.ad_campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.keyword_searches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trend_searches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.offers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.launch_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.launches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.usage_logs ENABLE ROW LEVEL SECURITY;
 
 -- Politiques RLS pour les profiles
 CREATE POLICY "Users can view own profile" ON public.profiles
@@ -191,18 +212,24 @@ CREATE POLICY "Users can view own trend searches" ON public.trend_searches
 CREATE POLICY "Users can insert own trend searches" ON public.trend_searches
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- Politiques RLS pour offers
 CREATE POLICY "Users can view own offers" ON public.offers
   FOR SELECT USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can insert own offers" ON public.offers
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- Politiques RLS pour launch_plans
-CREATE POLICY "Users can view own launch plans" ON public.launch_plans
+-- Politiques RLS pour launches
+CREATE POLICY "Users can view own launches" ON public.launches
   FOR SELECT USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can insert own launch plans" ON public.launch_plans
+CREATE POLICY "Users can insert own launches" ON public.launches
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Politiques RLS pour usage_logs
+CREATE POLICY "Users can view own usage logs" ON public.usage_logs
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own usage logs" ON public.usage_logs
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- ===========================================

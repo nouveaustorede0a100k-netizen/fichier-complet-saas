@@ -6,7 +6,7 @@ import { fetchProductHuntTrends } from "@/lib/trends/fetchProductHunt";
 import { fetchYouTubeTrends } from "@/lib/trends/fetchYouTube";
 import { mergeAndRankTrends } from "@/lib/trends/mergeAndRankTrends";
 import { normalizeKeyword } from "@/lib/trends/normalizeKeyword";
-import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { withAuth, createApiResponse, createErrorResponse } from '@/lib/middleware';
 import { recordUsage } from '@/lib/quota';
 
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
 
     // 6️⃣ Sauvegarder la recherche
       try {
+        const supabase = getSupabaseAdmin()
         await supabase
           .from('trend_searches')
           .insert({

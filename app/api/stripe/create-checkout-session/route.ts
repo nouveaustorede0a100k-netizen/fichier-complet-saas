@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server'
-import { stripe } from '@/lib/stripe'
-import { supabase } from '@/lib/supabase'
+import { stripe, SUBSCRIPTION_PLANS } from '@/lib/stripe'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { createApiResponse, createErrorResponse } from '@/lib/middleware'
+
+const SUCCESS_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,10 +13,10 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Price ID and User ID are required', 400)
     }
 
-    // Récupérer l'utilisateur depuis Supabase
+    const supabase = getSupabaseAdmin()
     const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('*')
+      .from('profiles')
+      .select('id, email, stripe_customer_id')
       .eq('id', userId)
       .single()
 
@@ -22,48 +24,47 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('User not found', 404)
     }
 
-    // Créer ou récupérer le client Stripe
-    let customerId = user.stripe_customer_id
+    let customerId = user.stripe_customer_id as string | null
 
-    if (!customerId) {
-      const customer = await stripe.customers.create({
+    if (!customerId && 'customers' in stripe) {
+      const customer = await (stripe as any).customers.create({
         email: user.email,
-        metadata: {
-          userId: userId
-        }
+        metadata: { userId }
       })
       customerId = customer.id
 
-      // Mettre à jour l'utilisateur avec l'ID client Stripe
       await supabase
-        .from('users')
+        .from('profiles')
         .update({ stripe_customer_id: customerId })
         .eq('id', userId)
     }
 
-    // Créer la session de checkout
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
       line_items: [
         {
           price: priceId,
-          quantity: 1,
-        },
+          quantity: 1
+        }
       ],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`,
-      customer: customerId,
+      success_url: `${SUCCESS_URL}/dashboard?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${SUCCESS_URL}/pricing?canceled=true`,
+      customer: customerId ?? undefined,
+      customer_email: user.email,
       metadata: {
-        userId: userId
+        userId,
+        priceId
       }
     })
 
+    const plan = Object.values(SUBSCRIPTION_PLANS).find((subscriptionPlan) => subscriptionPlan.priceId === priceId)
+
     return createApiResponse({
       sessionId: session.id,
-      url: session.url
+      url: (session as any).url ?? null,
+      plan: plan?.name ?? 'custom'
     })
-
   } catch (error) {
     console.error('Error creating checkout session:', error)
     return createErrorResponse(

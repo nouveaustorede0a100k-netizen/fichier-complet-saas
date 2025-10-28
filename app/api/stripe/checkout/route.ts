@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCheckoutSession } from '@/lib/stripe'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseAdmin } from '@/lib/supabase'
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +15,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Vérifier que l'email existe dans Supabase
+    const supabase = getSupabaseAdmin()
     const { data: user, error: userError } = await supabase
       .from('profiles')
       .select('id, email')
@@ -29,8 +32,8 @@ export async function POST(request: NextRequest) {
     const { session, error } = await createCheckoutSession({
       priceId,
       customerEmail: email,
-      successUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?success=true`,
-      cancelUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing?canceled=true`,
+      successUrl: `${SITE_URL}/dashboard?success=true`,
+      cancelUrl: `${SITE_URL}/pricing?canceled=true`,
       metadata: {
         user_id: user.id,
         email: email
